@@ -17,8 +17,11 @@ import argparse
 import json
 import sys
 import traceback
+import time
+import ast
 
 from pipelines._utils import get_pipeline_driver, convert_struct, get_pipeline_custom_tags
+import boto3
 
 
 def main():  # pragma: no cover
@@ -30,13 +33,6 @@ def main():  # pragma: no cover
         "Creates or updates and runs the pipeline for the pipeline script."
     )
 
-    parser.add_argument(
-        "-n",
-        "--module-name",
-        dest="module_name",
-        type=str,
-        help="The module name of the pipeline to import.",
-    )
     parser.add_argument(
         "-kwargs",
         "--kwargs",
@@ -66,41 +62,39 @@ def main():  # pragma: no cover
         default=None,
         help="""List of dict strings of '[{"Key": "string", "Value": "string"}, ..]'""",
     )
+    parser.add_argument(
+        "-pipeline-name",
+        "--pipeline-name",
+        dest="pipeline_name",
+        default=None,
+        help="""name of the pipeline to run""",
+    )
     args = parser.parse_args()
 
-    if args.module_name is None or args.role_arn is None:
-        parser.print_help()
-        sys.exit(2)
     tags = convert_struct(args.tags)
-
+    kwarg_dict = convert_struct(args.kwargs)
+    
+    pipelineParameters = []
+    for key, value in kwarg_dict.items():
+        item = { "Name" : key, "Value" : value }
+        pipelineParameters.append(item)
+            
     try:
-        pipeline = get_pipeline_driver(args.module_name, args.kwargs)
-        print("###### Creating/updating a SageMaker Pipeline with the following definition:")
-        parsed = json.loads(pipeline.definition())
-        print(json.dumps(parsed, indent=2, sort_keys=True))
-
-        all_tags = get_pipeline_custom_tags(args.module_name, args.kwargs, tags)
-
-        upsert_response = pipeline.upsert(
-            role_arn=args.role_arn, description=args.description, tags=all_tags
+        sagemaker_client = boto3.client("sagemaker")
+        response = sagemaker_client.start_pipeline_execution(
+            PipelineName=args.pipeline_name,
+            PipelineParameters=pipelineParameters
         )
-        print("\n###### Created/Updated SageMaker Pipeline: Response received:")
-        print(upsert_response)
-
-        execution = pipeline.start()
-        print(f"\n###### Execution started with PipelineExecutionArn: {execution.arn}")
-
+        pipeline_execution_arn = response["PipelineExecutionArn"]
+        status = None
+        while True:
+            response = sagemaker_client.describe_pipeline_execution(PipelineExecutionArn=pipeline_execution_arn)
+            status = response["PipelineExecutionStatus"]
+            if status in ['Stopped', 'Failed', 'Succeeded']:
+                break
+            time.sleep(10)
+        print(f"pipeline execution status: {status}")
         print("Waiting for the execution to finish...")
-
-        # Setting the attempts and delay (in seconds) will modify the overall time the pipeline waits. 
-        # If the execution is taking a longer time, update these parameters to a larger value.
-        # Eg: The total wait time is calculated as 60 * 120 = 7200 seconds (2 hours)
-        execution.wait(max_attempts=120, delay=60)
-        
-        print("\n#####Execution completed. Execution step details:")
-
-        print(execution.list_steps())
-        # Todo print the status?
     except Exception as e:  # pylint: disable=W0703
         print(f"Exception: {e}")
         traceback.print_exc()

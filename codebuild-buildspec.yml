@@ -1,20 +1,35 @@
+
+
 version: 0.2
 
 phases:
   install:
     runtime-versions:
-      python: 3.11
+      python: 3.10
     commands:
       - pip install --upgrade --force-reinstall . "awscli>1.20.30"
-  
+      - pip install mlflow==2.13.2 sagemaker-mlflow s3fs xgboost
+    
   build:
     commands:
+      - export SAGEMAKER_USER_CONFIG_OVERRIDE="./config.yaml"
       - export PYTHONUNBUFFERED=TRUE
       - export SAGEMAKER_PROJECT_NAME_ID="${SAGEMAKER_PROJECT_NAME}-${SAGEMAKER_PROJECT_ID}"
       - |
-        run-pipeline --module-name pipelines.abalone.pipeline \
+        run-pipeline \
           --role-arn $SAGEMAKER_PIPELINE_ROLE_ARN \
-          --tags "[{\"Key\":\"sagemaker:project-name\", \"Value\":\"${SAGEMAKER_PROJECT_NAME}\"}, {\"Key\":\"sagemaker:project-id\", \"Value\":\"${SAGEMAKER_PROJECT_ID}\"}]" \
-          --kwargs "{\"region\":\"${AWS_REGION}\",\"role\":\"${SAGEMAKER_PIPELINE_ROLE_ARN}\",\"default_bucket\":\"${ARTIFACT_BUCKET}\",\"pipeline_name\":\"${SAGEMAKER_PROJECT_NAME_ID}\",\"model_package_group_name\":\"${SAGEMAKER_PROJECT_NAME_ID}\",\"base_job_prefix\":\"${SAGEMAKER_PROJECT_NAME_ID}\",\"sagemaker_project_name\":\"${SAGEMAKER_PROJECT_NAME}\"}"
-      - echo "Create/Update of the SageMaker Pipeline and execution completed."
-
+          --tags "[{\"Key\":\"sagemaker:project-name\",\"Value\":\"${SAGEMAKER_PROJECT_NAME}\"}, {\"Key\":\"sagemaker:project-id\", \"Value\":\"${SAGEMAKER_PROJECT_ID}\"}]" \
+          --pipeline-name "model-build-11-30-06-55-51-p-ob5ngfsnjce4" \
+          --kwargs "{ \
+                \"region\":\"ap-southeast-2\", \
+                \"feature_group_name\":\"player-churn-features-2025-11-29-14-06-07\",\
+                \"bucket_name\":\"sagemaker-ap-southeast-2-851725593014\",\
+                \"bucket_prefix\":\"player-churn/xgboost\",\
+                \"experiment_name\":\"player-churn-model-build-pipeline\", \
+                \"train_instance_type\":\"ml.m5.xlarge\", \
+                \"test_score_threshold\":\"0.75\",\
+                \"model_package_group_name\":\"model-build-11-30-06-55-51-p-ob5ngfsnjce4\",\
+                \"model_approval_status\":\"PendingManualApproval\",\
+                \"mlflow_tracking_server_arn\":\"arn:aws:sagemaker:ap-southeast-2:851725593014:mlflow-tracking-server/mlflow-29-14-33-12\"\
+                    }"
+      - echo "Create/update of the SageMaker Pipeline and a pipeline execution completed."
